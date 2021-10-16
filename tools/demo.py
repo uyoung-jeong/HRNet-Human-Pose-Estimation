@@ -43,6 +43,7 @@ from utils.transforms import get_affine_transform
 import matplotlib.lines as mlines
 import matplotlib.patches as mpatches
 
+
 CTX = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 # CTX = torch.device('cpu')
 
@@ -155,56 +156,59 @@ COCO_INSTANCE_CATEGORY_NAMES = [
 
 
 def get_person_detection_boxes(model, img, threshold=0.5):
-    pil_image = Image.fromarray(img)  # Load the image
-    transform = transforms.Compose([transforms.ToTensor()])  # Defing PyTorch Transform
-    transformed_img = transform(pil_image)  # Apply the transform to the image
-    pred = model([transformed_img.to(CTX)])  # Pass the image to the model
-    # Use the first detected person
-    pred_classes = [COCO_INSTANCE_CATEGORY_NAMES[i]
-                    for i in list(pred[0]['labels'].cpu().numpy())]  # Get the Prediction Score
-    pred_boxes = [[(i[0], i[1]), (i[2], i[3])]
-                  for i in list(pred[0]['boxes'].cpu().detach().numpy())]  # Bounding boxes
-    pred_scores = list(pred[0]['scores'].cpu().detach().numpy())
+    with torch.no_grad():
+        pil_image = Image.fromarray(img)  # Load the image
+        transform = transforms.Compose([transforms.ToTensor()])  # Defing PyTorch Transform
+        transformed_img = transform(pil_image)  # Apply the transform to the image
+        pred = model([transformed_img.to(CTX)])  # Pass the image to the model
+        # Use the first detected person
+        pred_classes = [COCO_INSTANCE_CATEGORY_NAMES[i]
+                        for i in list(pred[0]['labels'].cpu().numpy())]  # Get the Prediction Score
+        pred_boxes = [[(i[0], i[1]), (i[2], i[3])]
+                      for i in list(pred[0]['boxes'].cpu().detach().numpy())]  # Bounding boxes
+        pred_scores = list(pred[0]['scores'].cpu().detach().numpy())
 
-    person_boxes = []
-    # Select box has score larger than threshold and is person
-    for pred_class, pred_box, pred_score in zip(pred_classes, pred_boxes, pred_scores):
-        if (pred_score > threshold) and (pred_class == 'person'):
-            person_boxes.append(pred_box)
+        person_boxes = []
+        # Select box has score larger than threshold and is person
+        for pred_class, pred_box, pred_score in zip(pred_classes, pred_boxes, pred_scores):
+            if (pred_score > threshold) and (pred_class == 'person'):
+                person_boxes.append(pred_box)
 
-    return person_boxes
+        return person_boxes
 
 
 def get_pose_estimation_prediction(pose_model, image, centers, scales, transform):
-    rotation = 0
+    with torch.no_grad():
+        rotation = 0
 
-    # pose estimation transformation
-    model_inputs = []
-    for center, scale in zip(centers, scales):
-        trans = get_affine_transform(center, scale, rotation, cfg.MODEL.IMAGE_SIZE)
-        # Crop smaller image of people
-        model_input = cv2.warpAffine(
-            image,
-            trans,
-            (int(cfg.MODEL.IMAGE_SIZE[0]), int(cfg.MODEL.IMAGE_SIZE[1])),
-            flags=cv2.INTER_LINEAR)
+        # pose estimation transformation
+        model_inputs = []
+        for center, scale in zip(centers, scales):
+            trans = get_affine_transform(center, scale, rotation, cfg.MODEL.IMAGE_SIZE)
+            # Crop smaller image of people
+            model_input = cv2.warpAffine(
+                image,
+                trans,
+                (int(cfg.MODEL.IMAGE_SIZE[0]), int(cfg.MODEL.IMAGE_SIZE[1])),
+                flags=cv2.INTER_LINEAR)
 
-        # hwc -> 1chw
-        model_input = transform(model_input)  # .unsqueeze(0)
-        model_inputs.append(model_input)
+            # hwc -> 1chw
+            model_input = transform(model_input)  # .unsqueeze(0)
+            model_inputs.append(model_input)
 
-    # n * 1chw -> nchw
-    model_inputs = torch.stack(model_inputs)
+        # n * 1chw -> nchw
+        model_inputs = torch.stack(model_inputs)
+        # print(model_input.shape)
 
-    # compute output heatmap
-    output = pose_model(model_inputs.to(CTX))
-    coords, _ = get_final_preds(
-        cfg,
-        output.cpu().detach().numpy(),
-        np.asarray(centers),
-        np.asarray(scales))
+        # compute output heatmap
+        output = pose_model(model_inputs.to(CTX))
+        coords, _ = get_final_preds(
+            cfg,
+            output.cpu().detach().numpy(),
+            np.asarray(centers),
+            np.asarray(scales))
 
-    return coords
+        return coords
 
 
 def box_to_center_scale(box, model_image_width, model_image_height):
@@ -643,7 +647,7 @@ def main():
     ])
 
     # cudnn related setting
-    cudnn.benchmark = cfg.CUDNN.BENCHMARK
+    # cudnn.benchmark = cfg.CUDNN.BENCHMARK
     torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
     torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
@@ -653,6 +657,7 @@ def main():
     # csv_output_rows = []
 
     box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+    # box_model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
     box_model.to(CTX)
     box_model.eval()
     pose_model = eval('models.' + cfg.MODEL.NAME + '.get_pose_net')(
