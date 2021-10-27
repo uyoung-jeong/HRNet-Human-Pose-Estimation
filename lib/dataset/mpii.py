@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
 
 
 class MPIIDataset(JointsDataset):
-    def __init__(self, cfg, root, image_set, is_train, transform=None):
+    def __init__(self, cfg, root, image_set, is_train, transform=None, args=None):
         super().__init__(cfg, root, image_set, is_train, transform)
 
         self.num_joints = 16
@@ -38,6 +38,7 @@ class MPIIDataset(JointsDataset):
         if is_train and cfg.DATASET.SELECT_DATA:
             self.db = self.select_data(self.db)
 
+        self.args = args
         logger.info('=> load {} samples'.format(len(self.db)))
 
     def _get_db(self):

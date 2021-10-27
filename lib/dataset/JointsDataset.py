@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class JointsDataset(Dataset):
-    def __init__(self, cfg, root, image_set, is_train, transform=None):
+    def __init__(self, cfg, root, image_set, is_train, transform=None, args=None):
         self.num_joints = 0
         self.pixel_std = 200
         self.flip_pairs = []
@@ -55,6 +55,13 @@ class JointsDataset(Dataset):
 
         self.transform = transform
         self.db = []
+
+        self.cfg = cfg
+        self.args = args
+
+        # occllusion
+        self.mask_size_range = [0.3, 0.6]
+        self.mask_shapes = ['triangle', 'rectangle', 'ellipse']
 
     def _get_db(self):
         raise NotImplementedError
@@ -151,6 +158,51 @@ class JointsDataset(Dataset):
 
                 if c_half_body is not None and s_half_body is not None:
                     c, s = c_half_body, s_half_body
+
+            # simulate occlusion
+            if (self.cfg.DATASET.OCC == True) and (np.sum(joints_vis[:, 0]) >= self.cfg.DATASET.OCC_MIN_JOINT):
+                data_numpy_occ = np.copy(data_numpy)
+                n_joint = len(joints)
+                vis_mask = joints_vis[:,0].astype(bool)
+                visible_idxs = np.arange(n_joint)[vis_mask]
+                occ_idxs = np.random.choice(visible_idxs,self.cfg.DATASET.OCC_HIDE_NUM) # select among visible joints
+
+                for occ_idx in occ_idxs:
+                    dist = np.sqrt(np.sum((joints[occ_idx,:2] - np.delete(joints, occ_idx,axis=0)[:,:2])**2, axis=1))
+                    min_dist = np.min(dist)
+                    mask_size = np.random.uniform(*self.mask_size_range) * min_dist
+                    mask_shape = np.random.choice(self.mask_shapes)
+                    cur_pt = joints[occ_idx,:2].reshape((2,1))
+
+                    # mask the image
+                    color = (0,0,0) if self.cfg.DATASET.OCC_COLOR=='black' else np.random.randint(255,size=3)
+                    if mask_shape == 'ellipse': # draw ellipse
+                        axes = np.random.uniform(*self.mask_size_range, 2) * min_dist
+                        angle = np.random.randint(45)
+                        thickness = -1
+
+                        data_numpy_occ = cv2.ellipse(data_numpy_occ, cur_pt.astype(np.int32).flatten(), axes.astype(np.int32), angle, 0, 360, color, thickness)
+                    else: # draw polygon
+                        num_vertices = 4 if mask_shape == 'rectangle' else 3
+                        vector = np.random.random_sample((2,1))
+                        vector = vector / np.linalg.norm(vector)
+                        cur_pt = joints[occ_idx,:2].reshape((2,1))
+                        vertices = [cur_pt + vector * mask_size]
+                        angle_acc = 0
+                        for v_i in range(num_vertices-1):
+                            angle = 210 - angle_acc
+                            if (v_i+1 < num_vertices) or (angle_acc > 180):
+                                angle = np.radians(np.random.randint(30, 150))
+                            rot_mat = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
+                            vector = np.dot(rot_mat, vector) # get next vertex by rotation
+                            vertices.append(cur_pt + vector * np.random.uniform(*self.mask_size_range) * min_dist)
+                        vertices = np.array(vertices).astype(np.int32).reshape((1,-1,2)) # need to expand dimension
+
+                        data_numpy_occ = cv2.fillPoly(data_numpy_occ, vertices, color)
+
+                #cv2.imwrite(f'output/{idx}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+                #cv2.imwrite(f'output/{idx}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+                data_numpy = data_numpy_occ
 
             sf = self.scale_factor
             rf = self.rotation_factor
