@@ -1,5 +1,5 @@
 # ------------------------------------------------------------------------------
-# Code modified by Peter Naftaliev https://2d3d.ai too add functionality of sticks drawing between joints
+# Code modified from Peter Naftaliev, https://2d3d.ai
 #
 # Copyright (c) 2018-present Microsoft
 # Licensed under The Apache-2.0 License [see LICENSE for details]
@@ -272,7 +272,7 @@ def parse_args():
     parser.add_argument('--inferenceFps', type=int, default=20)
     parser.add_argument('--writeBoxFrames', action='store_true')
     parser.add_argument('--showImages', type=bool, default=False)
-
+    parser.add_argument('--cudnnBenchmark', type=bool, default=False)
     parser.add_argument('opts',
                         help='Modify config options using the command-line',
                         default=None,
@@ -288,10 +288,8 @@ def parse_args():
     return args
 
 def video_inference(args, box_model, pose_model, pose_dir, pose_transform):
-    # csv_output_rows = []
     # Loading an video
     vidcap = cv2.VideoCapture(args.videoFile)
-    # vidcap = cv2.VideoCapture('demo_/john-wick.mp4')
     fps = vidcap.get(cv2.CAP_PROP_FPS)
     if fps < args.inferenceFps:
         print('desired inference fps is ' + str(args.inferenceFps) + ' but video fps is ' + str(fps))
@@ -366,46 +364,8 @@ def video_inference(args, box_model, pose_model, pose_dir, pose_transform):
 
             coord_idx = 0
             for coords in pose_preds:
-                ###################################
-                # for k, link_pair in enumerate(xiaochu_style.link_pairs):
-                # if link_pair[0] in joints_dict \
-                #         and link_pair[1] in joints_dict:
-                #     if dt_joints[link_pair[0], 2] < joint_thres \
-                #             or dt_joints[link_pair[1], 2] < joint_thres \
-                #             or vg[link_pair[0]] == 0 \
-                #             or vg[link_pair[1]] == 0:
-                #         continue
-                # if k in range(6, 11):
-                #     lw = 1
-                # else:
-                #     lw = ref / 100.
-
-                # black ring
-                # for k in range(dt_joints.shape[0]):
-                #     if dt_joints[k, 2] < joint_thres \
-                #             or vg[link_pair[0]] == 0 \
-                #             or vg[link_pair[1]] == 0:
-                #         continue
-                #     if dt_joints[k, 0] > w or dt_joints[k, 1] > h:
-                #         continue
-                #     if k in range(5):
-                #         radius = 1
-                #     else:
-                #         radius = ref / 100
-
-                # circle = mpatches.Circle(tuple(dt_joints[k, :2]), radius=radius, ec='black', fc=ring_color[k], alpha=1, linewidth=1)
-                # circle.set_zorder(1)
-
-                # ax.add_patch(circle)
-                ###################################
                 # Draw each point on image
                 dt_bb = pred_boxes[coord_idx]
-                # dt_x0 = dt_bb[0] - dt_bb[2];
-                # dt_x1 = dt_bb[0] + dt_bb[2] * 2
-                # dt_y0 = dt_bb[1] - dt_bb[3];
-                # dt_y1 = dt_bb[1] + dt_bb[3] * 2
-                # dt_w = dt_x1 - dt_x0
-                # dt_h = dt_y1 - dt_y0
                 dt_w = dt_bb[1][0] - dt_bb[0][0]
                 dt_h = dt_bb[1][1] - dt_bb[0][1]
                 ref = min(dt_w, dt_h)
@@ -422,14 +382,7 @@ def video_inference(args, box_model, pose_model, pose_dir, pose_transform):
                         lw = 1  # TODO: maybe change line width if it doesn't look good
                     else:
                         lw = max(math.ceil(ref / 100), 1)
-                    # line = mlines.Line2D(
-                    #     np.array([joints[link_pair[0]][0],
-                    #               joints[link_pair[1]][0]]),
-                    #     np.array([joints[link_pair[0]][1],
-                    #               joints[link_pair[1]][1]]),
-                    #     ls='-', lw=lw, alpha=1, color=link_pair[2], )
-                    # line.set_zorder(0)
-                    # ax.add_line(line)
+
                     cv2.line(image_debug, joints[link_pair[0]], joints[link_pair[1]], link_pair[2], lw)
                 for coord in coords:
                     x_coord, y_coord = int(coord[0]), int(coord[1])
@@ -439,8 +392,7 @@ def video_inference(args, box_model, pose_model, pose_dir, pose_transform):
                         radius = max(1, math.ceil(ref / 100))
                     cv2.circle(image_debug, (x_coord, y_coord), radius, (0, 0, 0),
                                2)  # TODO: might need to multiply color by 255, and might need to change thinkness 2 to 1
-                    # cv2.circle(image_debug, (x_coord, y_coord), 4, (255, 0, 0), 2)
-                    # new_csv_row.extend([x_coord, y_coord])
+
 
                 coord_idx += 1
 
@@ -462,18 +414,6 @@ def video_inference(args, box_model, pose_model, pose_dir, pose_transform):
         cv2.imwrite(img_file, image_debug)
         outcap.write(image_debug)
 
-
-    # write csv
-    # csv_headers = ['frame']
-    # for keypoint in COCO_KEYPOINT_INDEXES.values():
-    #     csv_headers.extend([keypoint + '_x', keypoint + '_y'])
-    #
-    # csv_output_filename = os.path.join(args.outputDir, 'pose-data.csv')
-    # with open(csv_output_filename, 'w', newline='') as csvfile:
-    #     csvwriter = csv.writer(csvfile)
-    #     csvwriter.writerow(csv_headers)
-    #     csvwriter.writerows(csv_output_rows)
-
     vidcap.release()
     outcap.release()
 
@@ -489,7 +429,7 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
     time_pose = []
     time_total = []
     count = 0
-    time_experimentT_start = time.time()
+    time_experiment_start = time.time()
     for root, dirs, files in os.walk(args.imagesDirectory):
         for name in files:
             file_dir = os.path.join(root, name)
@@ -518,7 +458,6 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
             print("Find person bbox in: {} sec".format(then - now))
             time_bbox.append(then - now)
 
-            # new_csv_row = []
             # Can not find people. Move to next frame
             if pred_boxes:
 
@@ -544,46 +483,8 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
 
                 coord_idx = 0
                 for coords in pose_preds:
-                    ###################################
-                    # for k, link_pair in enumerate(xiaochu_style.link_pairs):
-                    # if link_pair[0] in joints_dict \
-                    #         and link_pair[1] in joints_dict:
-                    #     if dt_joints[link_pair[0], 2] < joint_thres \
-                    #             or dt_joints[link_pair[1], 2] < joint_thres \
-                    #             or vg[link_pair[0]] == 0 \
-                    #             or vg[link_pair[1]] == 0:
-                    #         continue
-                    # if k in range(6, 11):
-                    #     lw = 1
-                    # else:
-                    #     lw = ref / 100.
-
-                    # black ring
-                    # for k in range(dt_joints.shape[0]):
-                    #     if dt_joints[k, 2] < joint_thres \
-                    #             or vg[link_pair[0]] == 0 \
-                    #             or vg[link_pair[1]] == 0:
-                    #         continue
-                    #     if dt_joints[k, 0] > w or dt_joints[k, 1] > h:
-                    #         continue
-                    #     if k in range(5):
-                    #         radius = 1
-                    #     else:
-                    #         radius = ref / 100
-
-                    # circle = mpatches.Circle(tuple(dt_joints[k, :2]), radius=radius, ec='black', fc=ring_color[k], alpha=1, linewidth=1)
-                    # circle.set_zorder(1)
-
-                    # ax.add_patch(circle)
-                    ###################################
                     # Draw each point on image
                     dt_bb = pred_boxes[coord_idx]
-                    # dt_x0 = dt_bb[0] - dt_bb[2];
-                    # dt_x1 = dt_bb[0] + dt_bb[2] * 2
-                    # dt_y0 = dt_bb[1] - dt_bb[3];
-                    # dt_y1 = dt_bb[1] + dt_bb[3] * 2
-                    # dt_w = dt_x1 - dt_x0
-                    # dt_h = dt_y1 - dt_y0
                     dt_w = dt_bb[1][0] - dt_bb[0][0]
                     dt_h = dt_bb[1][1] - dt_bb[0][1]
                     ref = min(dt_w, dt_h)
@@ -600,14 +501,7 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
                             lw = 1  # TODO: maybe change line width if it doesn't look good
                         else:
                             lw = max(math.ceil(ref / 100), 1)
-                        # line = mlines.Line2D(
-                        #     np.array([joints[link_pair[0]][0],
-                        #               joints[link_pair[1]][0]]),
-                        #     np.array([joints[link_pair[0]][1],
-                        #               joints[link_pair[1]][1]]),
-                        #     ls='-', lw=lw, alpha=1, color=link_pair[2], )
-                        # line.set_zorder(0)
-                        # ax.add_line(line)
+
                         cv2.line(image_debug, joints[link_pair[0]], joints[link_pair[1]], link_pair[2], lw)
                     for coord in coords:
                         x_coord, y_coord = int(coord[0]), int(coord[1])
@@ -637,6 +531,10 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
             image_debug = cv2.cvtColor(image_debug, cv2.COLOR_RGB2BGR)
             cv2.imwrite(img_file, image_debug)
 
+    time_experiment_end = time.time()
+    print('TOTAL Time needed: ', (time_experiment_end-time_experiment_start), ' sec.')
+
+
 
 def main():
     # transformation
@@ -646,15 +544,17 @@ def main():
                              std=[0.229, 0.224, 0.225]),
     ])
 
-    # cudnn related setting
-    # cudnn.benchmark = cfg.CUDNN.BENCHMARK
-    torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
-    torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
     args = parse_args()
     update_config(cfg, args)
     pose_dir = prepare_output_dirs(args.outputDir)
     # csv_output_rows = []
+
+    # cudnn related setting
+    if args.cudnnBenchmark:
+        cudnn.benchmark = cfg.CUDNN.BENCHMARK
+        torch.backends.cudnn.deterministic = cfg.CUDNN.DETERMINISTIC
+        torch.backends.cudnn.enabled = cfg.CUDNN.ENABLED
 
     box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
     # box_model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
@@ -663,7 +563,6 @@ def main():
     pose_model = eval('models.' + cfg.MODEL.NAME + '.get_pose_net')(
         cfg, is_train=False
     )
-    # SHOW_IMAGES = args.showImages
 
     if cfg.TEST.MODEL_FILE:
         print('=> loading model from {}'.format(cfg.TEST.MODEL_FILE))
