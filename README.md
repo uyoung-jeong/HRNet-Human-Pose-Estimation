@@ -103,7 +103,31 @@ python tools/train.py \
 ```
 python tools/train.py \
     --cfg experiments/coco/hrnet/w32_256x192_adam_lr1e-3_occ.yaml \
+
 ```
+
+### Demo Commands
+​
+     * --cfg = configuration file of HRNet
+     * --fileType = Types of file. if video file, type 'vid', if image files 'img'.
+     * --imagesDirectory = Directory address of the image.
+     * --videoFile = Address of the video file on the hard disk.
+     * --outputDir = Directory where you want to save results.
+     * --inferenceFps = In case of video, how many frames/sec you want, 
+        default is 20.
+     * --showImages = Type "True" if you want to show the images on the
+        screen while running. Default is "False". No need to input if you 
+        dont want to show images in the screen.
+     * --cudnnBenchmark = Type "True" if you want to run the demo with 
+        cudnn.BENCHMARK. Default is "False" because it takes a too much
+        memory if the input images are not of same size. No need to input if you 
+        dont want to use it with cudnn.BENCHMARK
+​
+#### Example Command for video
+    python tools/demo.py --fileType vid --videoFile demo_samples/videos/basketball.mp4 --outputDir demo/videos/basktball/ --inferenceFps 15 --showImages False --cudnnBenchmark False --cfg experiments/coco/hrnet/w32_384x288_adam_lr1e-3.yaml TEST.MODEL_FILE models/pytorch/pose_coco/pose_hrnet_w32_384x288.pth 
+​
+#### Example Command for images
+    python tools/demo.py --fileType img --imagesDirectory data/coco/images/val2017/ --outputDir demo/coco_val  --showImages True --cudnnBenchmark False --cfg experiments/coco/hrnet/w32_384x288_adam_lr1e-3.yaml TEST.MODEL_FILE models/pytorch/pose_coco/pose_hrnet_w32_384x288.pth 
 
 ### Citation
 If you use our code or models in your research, please cite with:
