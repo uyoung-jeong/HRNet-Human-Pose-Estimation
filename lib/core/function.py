@@ -85,7 +85,7 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                       speed=input.size(0)/batch_time.val,
                       data_time=data_time, loss=losses, acc=acc)
             #logger.info(msg)
-            pbar.set_description(f'loss:{losses.val:.5f}, acc:{acc.val:.3f}')
+            pbar.set_description(f'epoch:{epoch}, loss:{losses.val:.5f}, acc:{acc.val:.3f}')
 
             writer = writer_dict['writer']
             global_steps = writer_dict['train_global_steps']

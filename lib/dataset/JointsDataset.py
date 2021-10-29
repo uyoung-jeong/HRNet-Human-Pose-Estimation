@@ -61,6 +61,7 @@ class JointsDataset(Dataset):
 
         # occllusion
         self.mask_size_range = [0.3, 0.6]
+        self.center_jitter = [-0.3, 0.3]
         self.mask_shapes = ['triangle', 'rectangle', 'ellipse']
 
     def _get_db(self):
@@ -175,19 +176,19 @@ class JointsDataset(Dataset):
                     cur_pt = joints[occ_idx,:2].reshape((2,1))
 
                     # mask the image
+                    center = cur_pt.flatten() + np.random.uniform(*self.center_jitter,2) * min_dist
                     color = (0,0,0) if self.cfg.DATASET.OCC_COLOR=='black' else np.random.randint(255,size=3)
                     if mask_shape == 'ellipse': # draw ellipse
                         axes = np.random.uniform(*self.mask_size_range, 2) * min_dist
                         angle = np.random.randint(45)
                         thickness = -1
 
-                        data_numpy_occ = cv2.ellipse(data_numpy_occ, cur_pt.astype(np.int32).flatten(), axes.astype(np.int32), angle, 0, 360, color, thickness)
+                        data_numpy_occ = cv2.ellipse(data_numpy_occ, center.astype(np.int32), axes.astype(np.int32), angle, 0, 360, color, thickness)
                     else: # draw polygon
                         num_vertices = 4 if mask_shape == 'rectangle' else 3
                         vector = np.random.random_sample((2,1))
                         vector = vector / np.linalg.norm(vector)
-                        cur_pt = joints[occ_idx,:2].reshape((2,1))
-                        vertices = [cur_pt + vector * mask_size]
+                        vertices = [center + vector * mask_size]
                         angle_acc = 0
                         for v_i in range(num_vertices-1):
                             angle = 210 - angle_acc
@@ -195,7 +196,7 @@ class JointsDataset(Dataset):
                                 angle = np.radians(np.random.randint(30, 150))
                             rot_mat = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
                             vector = np.dot(rot_mat, vector) # get next vertex by rotation
-                            vertices.append(cur_pt + vector * np.random.uniform(*self.mask_size_range) * min_dist)
+                            vertices.append(center + vector * np.random.uniform(*self.mask_size_range) * min_dist)
                         vertices = np.array(vertices).astype(np.int32).reshape((1,-1,2)) # need to expand dimension
 
                         data_numpy_occ = cv2.fillPoly(data_numpy_occ, vertices, color)
