@@ -74,6 +74,7 @@ _C.DATASET.OCC = False
 _C.DATASET.OCC_MIN_JOINT = 0 # minimum requirement to activate occlusion
 _C.DATASET.OCC_HIDE_NUM = 0 # number of keypoints to hide
 _C.DATASET.OCC_COLOR = 'black' # number of keypoints to hide
+_C.DATASET.OCC_METHOD = 'anchor' # center positioning method
 
 # train
 _C.TRAIN = CN()

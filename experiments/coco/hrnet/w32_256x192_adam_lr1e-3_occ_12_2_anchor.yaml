@@ -24,7 +24,8 @@ DATASET:
   TRAIN_SET: 'train2017'
   OCC: True
   OCC_MIN_JOINT: 12 # minimum requirement to activate occlusion
-  OCC_HIDE_NUM: 1 # number of keypoints to hide
+  OCC_HIDE_NUM: 2 # number of keypoints to hide
+  OCC_METHOD: 'anchor'
 MODEL:
   INIT_WEIGHTS: true
   NAME: pose_hrnet
