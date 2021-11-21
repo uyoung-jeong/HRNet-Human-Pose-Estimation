@@ -40,7 +40,8 @@ def main():
     json_data = None
     with open(args.json_path, 'r', encoding='utf-8') as f:
         json_data = json.load(f)
-
+    print(f'len(json_data):{len(json_data)}')
+    
     json_sorted = sorted(json_data, key=lambda e: e['score'])
 
     score_dict = {'0-20':0, '20-40':0, '40-60':0, '60-80':0, '80-100':0}
