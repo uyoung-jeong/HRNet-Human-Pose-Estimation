@@ -26,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class JointsDataset(Dataset):
-    def __init__(self, cfg, root, image_set, is_train, transform=None):
+    def __init__(self, cfg, root, image_set, is_train, transform=None, args=None):
         self.num_joints = 0
         self.pixel_std = 200
         self.flip_pairs = []
@@ -55,6 +55,14 @@ class JointsDataset(Dataset):
 
         self.transform = transform
         self.db = []
+
+        self.cfg = cfg
+        self.args = args
+
+        # occllusion
+        self.mask_size_range = [0.6, 1.4]
+        self.center_jitter = [-0.5, 0.5]
+        self.mask_shapes = ['triangle', 'rectangle', 'ellipse']
 
     def _get_db(self):
         raise NotImplementedError
@@ -151,6 +159,16 @@ class JointsDataset(Dataset):
 
                 if c_half_body is not None and s_half_body is not None:
                     c, s = c_half_body, s_half_body
+
+            # simulate occlusion
+            if self.cfg.DATASET.OCC == True:
+                if np.random.random_sample() > 0.5: # apply occlusion with 50% probability
+                    if self.cfg.DATASET.OCC_TYPE == 'Circles':
+                        data_numpy = self.circles_aug(data_numpy, image_file)
+                    elif self.cfg.DATASET.OCC_TYPE == 'Rectangles':
+                        data_numpy = self.rectangles_aug(data_numpy, image_file)
+                    elif self.cfg.DATASET.OCC_TYPE == 'Bars':
+                        data_numpy = self.bars_aug(data_numpy, image_file)
 
             sf = self.scale_factor
             rf = self.rotation_factor
@@ -287,3 +305,112 @@ class JointsDataset(Dataset):
             target_weight = np.multiply(target_weight, self.joints_weight)
 
         return target, target_weight
+
+    # method=='anchor': anchor on keypoint
+    # method=='random': random positioning
+    def occ_aug(self, data_numpy, joints, joints_vis, method='anchor'):
+        data_numpy_occ = np.copy(data_numpy)
+        n_joint = len(joints)
+        vis_mask = joints_vis[:,0].astype(bool)
+        visible_idxs = np.arange(n_joint)[vis_mask]
+        occ_idxs = np.random.choice(visible_idxs,self.cfg.DATASET.OCC_HIDE_NUM) # select among visible joints
+
+        for occ_idx in occ_idxs:
+            dist = np.sqrt(np.sum((joints[occ_idx,:2] - np.delete(joints, occ_idx,axis=0)[:,:2])**2, axis=1))
+            mask_dist = np.min(dist)
+            mask_size = np.random.uniform(*self.mask_size_range) * mask_dist
+            mask_shape = np.random.choice(self.mask_shapes)
+            cur_pt = joints[occ_idx,:2].reshape((2,1))
+
+            # mask the image
+            center = [data_numpy.shape[0]//2, data_numpy.shape[1]//2]
+            if method == 'anchor':
+                center = cur_pt.flatten() + np.random.uniform(*self.center_jitter,2) * mask_dist
+            elif method == 'random':
+                center = np.array([np.random.randint(mask_dist//2,data_numpy.shape[0]-mask_dist//2),
+                                   np.random.randint(mask_dist//2,data_numpy.shape[1]-mask_dist//2)])
+            color = (0,0,0) if self.cfg.DATASET.OCC_COLOR=='black' else np.random.randint(255,size=3)
+            if mask_shape == 'ellipse': # draw ellipse
+                axes = np.random.uniform(*self.mask_size_range, 2) * mask_dist
+                angle = np.random.randint(45)
+                thickness = -1
+
+                data_numpy_occ = cv2.ellipse(data_numpy_occ, center.astype(np.int32), axes.astype(np.int32), angle, 0, 360, color, thickness)
+            else: # draw polygon
+                num_vertices = 4 if mask_shape == 'rectangle' else 3
+                vector = np.random.random_sample((2,1))
+                vector = vector / np.linalg.norm(vector)
+                vertices = [center + vector * mask_size]
+                angle_acc = 0
+                for v_i in range(num_vertices-1):
+                    angle = 210 - angle_acc
+                    if (v_i+1 < num_vertices) or (angle_acc > 180):
+                        angle = np.radians(np.random.randint(30, 150))
+                    rot_mat = np.array([[np.cos(angle), -np.sin(angle)],[np.sin(angle), np.cos(angle)]])
+                    vector = np.dot(rot_mat, vector) # get next vertex by rotation
+                    vertices.append(center + vector * mask_size)
+                vertices = np.array(vertices).astype(np.int32).reshape((1,-1,2)) # need to expand dimension
+
+                data_numpy_occ = cv2.fillPoly(data_numpy_occ, vertices, color)
+
+        #cv2.imwrite(f'output/{idx}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        #cv2.imwrite(f'output/{idx}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        return data_numpy_occ
+
+    def circles_aug(self,data_numpy, image_file):
+        data_numpy_occ = np.copy(data_numpy)
+        number_of_obj = np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        for i in range(number_of_obj):
+            mask_dist = np.random.randint(data_numpy.shape[0] // 5)
+            # mask the image
+            center = np.array([np.random.randint(mask_dist // 2, data_numpy.shape[0] - mask_dist // 2),
+                               np.random.randint(mask_dist // 2, data_numpy.shape[1] - mask_dist // 2)])
+            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+
+            thickness = -1
+
+            data_numpy_occ = cv2.circle(data_numpy_occ, center.astype(np.int32), mask_dist, color, thickness)
+
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        return data_numpy_occ
+
+    def rectangles_aug(self,data_numpy, image_file):
+        data_numpy_occ = np.copy(data_numpy)
+        number_of_obj = self.cfg.DATASET.max_number_of_obj if self.cfg.DATASET.max_number_of_obj == self.cfg.DATASET.min_number_of_obj else np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        for i in range(number_of_obj):
+            mask_dist_y = np.random.randint(data_numpy.shape[0] // 5)
+            mask_dist_x = np.random.randint(data_numpy.shape[1] // 5)
+            # mask the image
+            point1 = np.array([np.random.randint(mask_dist_y // 2, data_numpy.shape[0] - mask_dist_y // 2),
+                               np.random.randint(mask_dist_x // 2, data_numpy.shape[1] - mask_dist_x // 2)])
+            point2 = point1 + np.array([mask_dist_y, mask_dist_x])
+            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+
+            thickness = -1
+
+            data_numpy_occ = cv2.rectangle(data_numpy_occ, point1, point2, color, thickness)
+
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        return data_numpy_occ
+
+    def bars_aug(self,data_numpy, image_file):
+        data_numpy_occ = np.copy(data_numpy)
+        number_of_obj = self.cfg.DATASET.max_number_of_obj if self.cfg.DATASET.max_number_of_obj == self.cfg.DATASET.min_number_of_obj else np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        for i in range(number_of_obj):
+            mask_dist_x = np.random.randint(data_numpy.shape[0] // 5)
+            mask_dist_y = np.random.randint((mask_dist_x // 2) if (mask_dist_x // 2) <= 0 else (mask_dist_x // 2) + 10)
+            # mask the image
+            point1 = np.array([np.random.randint(mask_dist_y // 2, data_numpy.shape[0] - mask_dist_y // 2),
+                               np.random.randint(mask_dist_x // 2, data_numpy.shape[1] - mask_dist_x // 2)])
+            point2 = point1 + np.array([mask_dist_y, mask_dist_x])
+            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+
+            thickness = -1
+
+            data_numpy_occ = cv2.rectangle(data_numpy_occ, point1, point2, color, thickness)
+
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        return data_numpy_occ

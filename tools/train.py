@@ -218,6 +218,11 @@ def main():
     torch.save(model.module.state_dict(), final_model_state_file)
     writer_dict['writer'].close()
 
+    # write summary text
+    best_perf_file = args.cfg.replace('.yaml', '_summary.txt')
+    with open(best_perf_file,'a') as f:
+        f.write(f'{final_output_dir},{best_perf}\n')
+
 
 if __name__ == '__main__':
     main()

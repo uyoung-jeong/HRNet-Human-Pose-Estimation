@@ -7,13 +7,15 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
- 
+
 import time
 import logging
 import os
 
 import numpy as np
 import torch
+
+from tqdm import tqdm
 
 from core.evaluate import accuracy
 from core.inference import get_final_preds
@@ -35,7 +37,8 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
     model.train()
 
     end = time.time()
-    for i, (input, target, target_weight, meta) in enumerate(train_loader):
+    pbar = tqdm(train_loader)
+    for i, (input, target, target_weight, meta) in enumerate(pbar):
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -81,7 +84,8 @@ def train(config, train_loader, model, criterion, optimizer, epoch,
                       epoch, i, len(train_loader), batch_time=batch_time,
                       speed=input.size(0)/batch_time.val,
                       data_time=data_time, loss=losses, acc=acc)
-            logger.info(msg)
+            #logger.info(msg)
+            pbar.set_description(f'epoch:{epoch}, loss:{losses.val:.5f}, acc:{acc.val:.3f}')
 
             writer = writer_dict['writer']
             global_steps = writer_dict['train_global_steps']

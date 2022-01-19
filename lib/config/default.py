@@ -69,6 +69,15 @@ _C.DATASET.PROB_HALF_BODY = 0.0
 _C.DATASET.NUM_JOINTS_HALF_BODY = 8
 _C.DATASET.COLOR_RGB = False
 
+# occlusion augmentation
+_C.DATASET.OCC = False
+_C.DATASET.OCC_MIN_JOINT = 0 # minimum requirement to activate occlusion
+_C.DATASET.OCC_HIDE_NUM = 0 # number of keypoints to hide
+_C.DATASET.OCC_COLOR = 'black' # number of keypoints to hide
+_C.DATASET.OCC_METHOD = 'anchor' # center positioning method
+_C.DATASET.OCC_TYPE = 'Circles' # Type of object to merge in the image
+_C.DATASET.min_number_of_obj = 1 # min number of objects to include in the image
+_C.DATASET.max_number_of_obj = 7 # max number of objects to include in the image
 # train
 _C.TRAIN = CN()
 
@@ -157,4 +166,3 @@ if __name__ == '__main__':
     import sys
     with open(sys.argv[1], 'w') as f:
         print(_C, file=f)
-
