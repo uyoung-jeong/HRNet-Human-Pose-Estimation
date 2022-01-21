@@ -164,12 +164,13 @@ class JointsDataset(Dataset):
             if self.cfg.DATASET.OCC == True:
                 if np.random.random_sample() > 0.5: # apply occlusion with 50% probability
                     if self.cfg.DATASET.OCC_TYPE == 'Circles':
-                        data_numpy = self.circles_aug(data_numpy, image_file)
+                        data_numpy = self.circles_aug(data_numpy,self.cfg.DATASET.max_number_of_obj, self.cfg.DATASET.min_number_of_obj, image_file)
                     elif self.cfg.DATASET.OCC_TYPE == 'Rectangles':
-                        data_numpy = self.rectangles_aug(data_numpy, image_file)
+                        data_numpy = self.rectangles_aug(data_numpy,self.cfg.DATASET.max_number_of_obj, self.cfg.DATASET.min_number_of_obj, image_file)
                     elif self.cfg.DATASET.OCC_TYPE == 'Bars':
-                        data_numpy = self.bars_aug(data_numpy, image_file)
-
+                        data_numpy = self.bars_aug(data_numpy, self.cfg.DATASET.max_number_of_obj, self.cfg.DATASET.min_number_of_obj, image_file)
+                    elif self.cfg.DATASET.OCC_TYPE == 'Mixed':
+                        data_numpy = self.mixed_aug(data_numpy, image_file)
             sf = self.scale_factor
             rf = self.rotation_factor
             s = s * np.clip(np.random.randn()*sf + 1, 1 - sf, 1 + sf)
@@ -357,9 +358,9 @@ class JointsDataset(Dataset):
         #cv2.imwrite(f'output/{idx}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
-    def circles_aug(self,data_numpy, image_file):
+    def circles_aug(self,data_numpy,max_number_of_obj, min_number_of_obj, image_file):
         data_numpy_occ = np.copy(data_numpy)
-        number_of_obj = np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        number_of_obj = max_number_of_obj if max_number_of_obj == min_number_of_obj else np.random.randint(min_number_of_obj, max_number_of_obj)
         for i in range(number_of_obj):
             mask_dist = np.random.randint(data_numpy.shape[0] // 5)
             # mask the image
@@ -375,9 +376,9 @@ class JointsDataset(Dataset):
         # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
-    def rectangles_aug(self,data_numpy, image_file):
+    def rectangles_aug(self,data_numpy,max_number_of_obj,min_number_of_obj,  image_file):
         data_numpy_occ = np.copy(data_numpy)
-        number_of_obj = self.cfg.DATASET.max_number_of_obj if self.cfg.DATASET.max_number_of_obj == self.cfg.DATASET.min_number_of_obj else np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        number_of_obj = max_number_of_obj if max_number_of_obj == min_number_of_obj else np.random.randint(min_number_of_obj, max_number_of_obj)
         for i in range(number_of_obj):
             mask_dist_y = np.random.randint(data_numpy.shape[0] // 5)
             mask_dist_x = np.random.randint(data_numpy.shape[1] // 5)
@@ -395,12 +396,12 @@ class JointsDataset(Dataset):
         # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
-    def bars_aug(self,data_numpy, image_file):
+    def bars_aug(self,data_numpy, max_number_of_obj, min_number_of_obj, image_file):
         data_numpy_occ = np.copy(data_numpy)
-        number_of_obj = self.cfg.DATASET.max_number_of_obj if self.cfg.DATASET.max_number_of_obj == self.cfg.DATASET.min_number_of_obj else np.random.randint(self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        number_of_obj = max_number_of_obj if max_number_of_obj == min_number_of_obj else np.random.randint(min_number_of_obj, max_number_of_obj)
         for i in range(number_of_obj):
             mask_dist_x = np.random.randint(data_numpy.shape[0] // 5)
-            mask_dist_y = np.random.randint((mask_dist_x // 2) if (mask_dist_x // 2) <= 0 else (mask_dist_x // 2) + 10)
+            mask_dist_y = np.random.randint((mask_dist_x // 2) if (mask_dist_x // 2) > 0 else ((mask_dist_x // 2) + 10))
             # mask the image
             point1 = np.array([np.random.randint(mask_dist_y // 2, data_numpy.shape[0] - mask_dist_y // 2),
                                np.random.randint(mask_dist_x // 2, data_numpy.shape[1] - mask_dist_x // 2)])
@@ -410,6 +411,24 @@ class JointsDataset(Dataset):
             thickness = -1
 
             data_numpy_occ = cv2.rectangle(data_numpy_occ, point1, point2, color, thickness)
+
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        return data_numpy_occ
+
+    def mixed_aug(self, data_numpy, image_file):
+        data_numpy_occ = np.copy(data_numpy)
+        number_of_obj = self.cfg.DATASET.max_number_of_obj if self.cfg.DATASET.max_number_of_obj == self.cfg.DATASET.min_number_of_obj else np.random.randint(
+            self.cfg.DATASET.min_number_of_obj, self.cfg.DATASET.max_number_of_obj)
+        aug_methods = ['Circles', 'Rectangles', 'Bars']
+        for i in range(number_of_obj):
+            aug_method = np.random.choice(aug_methods)
+            if aug_method == 'Circles':
+                data_numpy_occ = self.circles_aug(data_numpy_occ, 1, 1, image_file)
+            if aug_method == 'Rectangles':
+                data_numpy_occ = self.rectangles_aug(data_numpy_occ, 1, 1, image_file)
+            if aug_method == 'Bars':
+                data_numpy_occ = self.bars_aug(data_numpy_occ, 1, 1, image_file)
 
         # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
         # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
