@@ -21,6 +21,7 @@ from utils.transforms import get_affine_transform
 from utils.transforms import affine_transform
 from utils.transforms import fliplr_joints
 
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -372,48 +373,81 @@ class JointsDataset(Dataset):
 
             data_numpy_occ = cv2.circle(data_numpy_occ, center.astype(np.int32), mask_dist, color, thickness)
 
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Circles/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Circles/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
     def rectangles_aug(self,data_numpy,max_number_of_obj,min_number_of_obj,  image_file):
         data_numpy_occ = np.copy(data_numpy)
         number_of_obj = max_number_of_obj if max_number_of_obj == min_number_of_obj else np.random.randint(min_number_of_obj, max_number_of_obj)
         for i in range(number_of_obj):
-            mask_dist_y = np.random.randint(data_numpy.shape[0] // 5)
-            mask_dist_x = np.random.randint(data_numpy.shape[1] // 5)
+            # finding distance
+            height = np.random.randint(data_numpy.shape[0] // 5)
+            width = np.random.randint(data_numpy.shape[1] // 5)
+
+            # findig points
+            _angle = np.random.randint(180) * np.pi / 180.0
+            b = np.cos(_angle) * 0.5
+            a = np.sin(_angle) * 0.5
+            # Choosing Random Point
+            x0 = np.random.randint(width // 2, data_numpy.shape[1] - width // 2)
+            y0 = np.random.randint(height // 2, data_numpy.shape[0] - height // 2)
+            # four points of the rectangle
+            pt0 = (int(x0 - a * height - b * width),
+                   int(y0 + b * height - a * width))
+            pt1 = (int(x0 + a * height - b * width),
+                   int(y0 - b * height - a * width))
+            pt2 = (int(2 * x0 - pt0[0]), int(2 * y0 - pt0[1]))
+            pt3 = (int(2 * x0 - pt1[0]), int(2 * y0 - pt1[1]))
+
+            pts = np.array([pt0, pt1, pt2, pt3])
+            pts = pts.reshape((-1, 1, 2))
             # mask the image
-            point1 = np.array([np.random.randint(mask_dist_y // 2, data_numpy.shape[0] - mask_dist_y // 2),
-                               np.random.randint(mask_dist_x // 2, data_numpy.shape[1] - mask_dist_x // 2)])
-            point2 = point1 + np.array([mask_dist_y, mask_dist_x])
+
             color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
 
             thickness = -1
 
-            data_numpy_occ = cv2.rectangle(data_numpy_occ, point1, point2, color, thickness)
+            data_numpy_occ = cv2.fillPoly(data_numpy_occ, [pts], color)
 
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Rectangles/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Rectangles/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
     def bars_aug(self,data_numpy, max_number_of_obj, min_number_of_obj, image_file):
+        def get_point(img,side):
+            if side == 'N':
+                y = 0
+                x =  np.random.randint(0, (img.shape[1] - 1))
+            elif side == 'S':
+                y = img.shape[0] - 1
+                x = np.random.randint(0, (img.shape[1] - 1))
+            elif side == 'E':
+                x = img.shape[1] - 1
+                y = np.random.randint(0, (img.shape[0] - 1))
+            else:
+                x = 0
+                y = np.random.randint(0, (img.shape[0] - 1))
+            return (x, y)
+        
+        
         data_numpy_occ = np.copy(data_numpy)
         number_of_obj = max_number_of_obj if max_number_of_obj == min_number_of_obj else np.random.randint(min_number_of_obj, max_number_of_obj)
+        
+        sides = ['W', 'E', 'N', 'S']
+        
         for i in range(number_of_obj):
-            mask_dist_x = np.random.randint(data_numpy.shape[0] // 5)
-            mask_dist_y = np.random.randint((mask_dist_x // 2) if (mask_dist_x // 2) > 0 else ((mask_dist_x // 2) + 10))
-            # mask the image
-            point1 = np.array([np.random.randint(mask_dist_y // 2, data_numpy.shape[0] - mask_dist_y // 2),
-                               np.random.randint(mask_dist_x // 2, data_numpy.shape[1] - mask_dist_x // 2)])
-            point2 = point1 + np.array([mask_dist_y, mask_dist_x])
+            choosen_sides = random.sample(sides, 2)
+            start_point = get_point(data_numpy_occ, choosen_sides[0])
+            end_point = get_point(data_numpy_occ, choosen_sides[1])
+            thickness = np.random.randint(10, 50)
             color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
 
-            thickness = -1
+            
+            data_numpy_occ = cv2.line(data_numpy_occ, start_point, end_point, color, thickness)
 
-            data_numpy_occ = cv2.rectangle(data_numpy_occ, point1, point2, color, thickness)
-
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Bars/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Bars/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
 
     def mixed_aug(self, data_numpy, image_file):
@@ -430,6 +464,6 @@ class JointsDataset(Dataset):
             if aug_method == 'Bars':
                 data_numpy_occ = self.bars_aug(data_numpy_occ, 1, 1, image_file)
 
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
-        # cv2.imwrite(f'output/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Mixes/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Mixes/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
