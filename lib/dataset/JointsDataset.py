@@ -367,8 +367,8 @@ class JointsDataset(Dataset):
             # mask the image
             center = np.array([np.random.randint(mask_dist // 2, data_numpy.shape[0] - mask_dist // 2),
                                np.random.randint(mask_dist // 2, data_numpy.shape[1] - mask_dist // 2)])
-            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
-
+            color = [0, 0, 0] if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+            color = tuple(int(i) for i in color)
             thickness = -1
 
             data_numpy_occ = cv2.circle(data_numpy_occ, center.astype(np.int32), mask_dist, color, thickness)
@@ -404,7 +404,8 @@ class JointsDataset(Dataset):
             pts = pts.reshape((-1, 1, 2))
             # mask the image
 
-            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+            color = [0, 0, 0] if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+            color = tuple(int(i) for i in color)
 
             thickness = -1
 
@@ -441,8 +442,8 @@ class JointsDataset(Dataset):
             start_point = get_point(data_numpy_occ, choosen_sides[0])
             end_point = get_point(data_numpy_occ, choosen_sides[1])
             thickness = np.random.randint(10, 50)
-            color = (0, 0, 0) if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
-
+            color = [0, 0, 0] if self.cfg.DATASET.OCC_COLOR == 'black' else np.random.randint(255, size=3)
+            color = tuple(int(i) for i in color)
             
             data_numpy_occ = cv2.line(data_numpy_occ, start_point, end_point, color, thickness)
 
@@ -464,6 +465,6 @@ class JointsDataset(Dataset):
             if aug_method == 'Bars':
                 data_numpy_occ = self.bars_aug(data_numpy_occ, 1, 1, image_file)
 
-        # cv2.imwrite(f'output/Mixes/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
-        # cv2.imwrite(f'output/Mixes/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Mixes_color/{image_file[27:-4]}{i}_occ.jpg',cv2.cvtColor(data_numpy_occ, cv2.COLOR_BGR2RGB))
+        # cv2.imwrite(f'output/Mixes_color/{image_file[27:-4]}{i}.jpg',cv2.cvtColor(data_numpy, cv2.COLOR_BGR2RGB))
         return data_numpy_occ
