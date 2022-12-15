@@ -267,6 +267,7 @@ def parse_args():
     parser.add_argument('--cfg', type=str, required=True)
     parser.add_argument('--videoFile', type=str, required=False)
     parser.add_argument('--fileType', type=str, default='vid', required=True)
+    parser.add_argument('--jsonDir', type=str)
     parser.add_argument('--imagesDirectory', type=str)
     parser.add_argument('--outputDir', type=str, default='demo/')
     parser.add_argument('--inferenceFps', type=int, default=20)
@@ -544,46 +545,8 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
 
                 coord_idx = 0
                 for coords in pose_preds:
-                    ###################################
-                    # for k, link_pair in enumerate(xiaochu_style.link_pairs):
-                    # if link_pair[0] in joints_dict \
-                    #         and link_pair[1] in joints_dict:
-                    #     if dt_joints[link_pair[0], 2] < joint_thres \
-                    #             or dt_joints[link_pair[1], 2] < joint_thres \
-                    #             or vg[link_pair[0]] == 0 \
-                    #             or vg[link_pair[1]] == 0:
-                    #         continue
-                    # if k in range(6, 11):
-                    #     lw = 1
-                    # else:
-                    #     lw = ref / 100.
-
-                    # black ring
-                    # for k in range(dt_joints.shape[0]):
-                    #     if dt_joints[k, 2] < joint_thres \
-                    #             or vg[link_pair[0]] == 0 \
-                    #             or vg[link_pair[1]] == 0:
-                    #         continue
-                    #     if dt_joints[k, 0] > w or dt_joints[k, 1] > h:
-                    #         continue
-                    #     if k in range(5):
-                    #         radius = 1
-                    #     else:
-                    #         radius = ref / 100
-
-                    # circle = mpatches.Circle(tuple(dt_joints[k, :2]), radius=radius, ec='black', fc=ring_color[k], alpha=1, linewidth=1)
-                    # circle.set_zorder(1)
-
-                    # ax.add_patch(circle)
-                    ###################################
                     # Draw each point on image
                     dt_bb = pred_boxes[coord_idx]
-                    # dt_x0 = dt_bb[0] - dt_bb[2];
-                    # dt_x1 = dt_bb[0] + dt_bb[2] * 2
-                    # dt_y0 = dt_bb[1] - dt_bb[3];
-                    # dt_y1 = dt_bb[1] + dt_bb[3] * 2
-                    # dt_w = dt_x1 - dt_x0
-                    # dt_h = dt_y1 - dt_y0
                     dt_w = dt_bb[1][0] - dt_bb[0][0]
                     dt_h = dt_bb[1][1] - dt_bb[0][1]
                     ref = min(dt_w, dt_h)
@@ -600,14 +563,6 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
                             lw = 1  # TODO: maybe change line width if it doesn't look good
                         else:
                             lw = max(math.ceil(ref / 100), 1)
-                        # line = mlines.Line2D(
-                        #     np.array([joints[link_pair[0]][0],
-                        #               joints[link_pair[1]][0]]),
-                        #     np.array([joints[link_pair[0]][1],
-                        #               joints[link_pair[1]][1]]),
-                        #     ls='-', lw=lw, alpha=1, color=link_pair[2], )
-                        # line.set_zorder(0)
-                        # ax.add_line(line)
                         cv2.line(image_debug, joints[link_pair[0]], joints[link_pair[1]], link_pair[2], lw)
                     for coord in coords:
                         x_coord, y_coord = int(coord[0]), int(coord[1])
@@ -616,9 +571,7 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
                         else:
                             radius = max(1, math.ceil(ref / 100))
                         cv2.circle(image_debug, (x_coord, y_coord), radius, (0, 0, 0),
-                                   2)  # TODO: might need to multiply color by 255, and might need to change thinkness 2 to 1
-                        # cv2.circle(image_debug, (x_coord, y_coord), 4, (255, 0, 0), 2)
-                        # new_csv_row.extend([x_coord, y_coord])
+                                   2)
 
                     coord_idx += 1
 
@@ -637,6 +590,75 @@ def image_inference(args, box_model, pose_model, pose_dir, pose_transform):
             image_debug = cv2.cvtColor(image_debug, cv2.COLOR_RGB2BGR)
             cv2.imwrite(img_file, image_debug)
 
+def json_inference(args, json_data, pose_model, pose_dir, pose_transform):
+    time_pose = []
+    time_total = []
+    count = 0
+
+    time_experimentT_start = time.time()
+    total_now = time.time()
+
+    image_id = json_data['scene_graph']['image_id']
+    image = json_data['image_contents']
+    image_bgr = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    image_input = image_bgr
+    image_output = image
+
+    # get person object bboxes
+    person_class_id = 1
+    person_objects = [e for e in json_data['scene_graph']['objects'] if e['class_id']==person_class_id]
+
+    if len(person_objects)>0:
+        # get bbox
+        bbox_anns = [e['object_bbox'] for e in person_objects]
+        bboxes = [[[e['x'],e['y']],[e['x']+e['width'],e['y']+e['height']]] for e in bbox_anns]
+
+        centers = []
+        scales = []
+        for box in bboxes:
+            center, scale = box_to_center_scale(box, cfg.MODEL.IMAGE_SIZE[0], cfg.MODEL.IMAGE_SIZE[1])
+            centers.append(center)
+            scales.append(scale)
+
+        now = time.time()
+        pose_preds = get_pose_estimation_prediction(pose_model, image_input, centers, scales,
+                                                    transform=pose_transform)
+        then = time.time()
+        print("Find person pose in: {:.4f} sec".format(then - now))
+        time_pose.append(then - now)
+
+        for ii, coords in enumerate(pose_preds):
+            # Draw each point on image
+            dt_w = bbox_anns[ii]['width']
+            dt_h = bbox_anns[ii]['height']
+            ref = min(dt_w, dt_h)
+
+            join_idx = 0
+            joints = {}
+            for coord in coords:
+                x_coord, y_coord = int(coord[0]), int(coord[1])
+                joints[join_idx] = (x_coord, y_coord)
+                join_idx += 1
+
+            for k, link_pair in enumerate(chunhua_style.link_pairs):
+                if k >= 6 and k < 11:
+                    lw = 1  # TODO: maybe change line width if it doesn't look good
+                else:
+                    lw = max(math.ceil(ref / 100), 1)
+                cv2.line(image_output, joints[link_pair[0]], joints[link_pair[1]], link_pair[2], lw)
+            for coord in coords:
+                x_coord, y_coord = int(coord[0]), int(coord[1])
+                if join_idx < 5:
+                    radius = 1  # Might want to put some logic into radius size, according to person size. check the radius = ref / 100 in plot_coco
+                else:
+                    radius = max(1, math.ceil(ref / 100))
+                cv2.circle(image_output, (x_coord, y_coord), radius, (0, 0, 0),2)
+
+        total_then = time.time()
+        time_total.append(total_then - total_now)
+
+    img_file = os.path.join(pose_dir, '{}_pose.jpg'.format(image_id))
+    cv2.imwrite(img_file, image_output)
 
 def main():
     # transformation
@@ -656,10 +678,22 @@ def main():
     pose_dir = prepare_output_dirs(args.outputDir)
     # csv_output_rows = []
 
-    box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
-    # box_model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
-    box_model.to(CTX)
-    box_model.eval()
+    json_data = None
+    use_json = False
+    if args.jsonDir != '' and os.path.exists(args.jsonDir):
+        import json
+        with open(args.jsonDir, 'r') as f:
+            json_data = json.load(f)
+
+        img_path = args.jsonDir.replace('.json','.jpg')
+        json_data = {'image_contents': cv2.imread(img_path),
+                     'scene_graph': json_data}
+        use_json = True
+    else:
+        box_model = torchvision.models.detection.fasterrcnn_resnet50_fpn(pretrained=True)
+        # box_model = torchvision.models.detection.fasterrcnn_mobilenet_v3_large_fpn(pretrained=True)
+        box_model.to(CTX)
+        box_model.eval()
     pose_model = eval('models.' + cfg.MODEL.NAME + '.get_pose_net')(
         cfg, is_train=False
     )
@@ -674,10 +708,17 @@ def main():
     pose_model.to(CTX)
     pose_model.eval()
 
-    if args.fileType == 'vid':
-        video_inference(args, box_model, pose_model, pose_dir, pose_transform)
+    if use_json:
+        """
+        python tools/demo.py --cfg experiments/coco/hrnet/w32_384x288_adam_lr1e-3.yaml --fileType img --outputDir demo_out \
+        --jsonDir keti_demo_input/2.json TEST.MODEL_FILE models/pytorch/pose_coco/pose_hrnet_w32_384x288.pth
+        """
+        json_inference(args, json_data, pose_model, pose_dir, pose_transform)
     else:
-        image_inference(args, box_model, pose_model, pose_dir, pose_transform)
+        if args.fileType == 'vid':
+            video_inference(args, box_model, pose_model, pose_dir, pose_transform)
+        else:
+            image_inference(args, box_model, pose_model, pose_dir, pose_transform)
 
 
 
